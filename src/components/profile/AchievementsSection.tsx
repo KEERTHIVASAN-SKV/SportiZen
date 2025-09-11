@@ -55,7 +55,7 @@ const AchievementsSection: React.FC<AchievementsSectionProps> = ({ achievements 
         {achievements.map((achievement, index) => {
           const Icon = getAchievementIcon(achievement.type);
           const colorClass = getAchievementColor(achievement.type);
-          
+
           return (
             <div
               key={achievement.id}
@@ -65,28 +65,23 @@ const AchievementsSection: React.FC<AchievementsSectionProps> = ({ achievements 
               <div className={`w-12 h-12 rounded-full ${colorClass} flex items-center justify-center mb-4`}>
                 <Icon className="w-6 h-6" />
               </div>
-              
+
               <h4 className="font-semibold text-gray-800 dark:text-white mb-2">
                 {achievement.title}
               </h4>
-              
+
               <p className="text-gray-600 dark:text-gray-400 text-sm mb-3">
                 {achievement.description}
               </p>
-              
+
+              {/* ✅ Corrected date formatting */}
               <div className="text-xs text-gray-500 dark:text-gray-500">
-                {new Date(achievement.date).toLocaleDateString()}
+                {new Date(achievement.date).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                })}
               </div>
-              
-              {achievement.image && (
-                <div className="mt-3 rounded-lg overflow-hidden">
-                  <img
-                    src={achievement.image}
-                    alt={achievement.title}
-                    className="w-full h-32 object-cover"
-                  />
-                </div>
-              )}
             </div>
           );
         })}

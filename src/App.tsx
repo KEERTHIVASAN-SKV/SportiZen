@@ -7,6 +7,7 @@ import Dashboard from './components/dashboard/Dashboard';
 import ProfilePage from './components/profile/ProfilePage';
 import SearchPage from './components/search/SearchPage';
 import Feed from './components/feed/Feed';
+import AchievementsPage from './components/achievements/AchievementsPage'; // NEW
 import AnimatedBackground from './components/AnimatedBackground';
 
 const AppContent: React.FC = () => {
@@ -23,6 +24,8 @@ const AppContent: React.FC = () => {
         return <Dashboard />;
       case 'profile':
         return <ProfilePage />;
+      case 'achievements': // NEW
+        return <AchievementsPage />;
       case 'search':
         return <SearchPage />;
       case 'connections':

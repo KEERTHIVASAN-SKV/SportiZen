@@ -15,6 +15,7 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
   const navItems = [
     { id: 'dashboard', icon: Home, label: 'Dashboard' },
     { id: 'profile', icon: User, label: 'Profile' },
+    { id: 'achievements', icon: Trophy, label: 'Achievements' }, // NEW
     { id: 'search', icon: Search, label: 'Search' },
     { id: 'connections', icon: Users, label: 'Network' },
     { id: 'messages', icon: MessageCircle, label: 'Messages' },
@@ -78,7 +79,6 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
                 @{user?.username}
               </span>
             </div>
-
             <button
               onClick={logout}
               className="p-2 text-gray-600 dark:text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
