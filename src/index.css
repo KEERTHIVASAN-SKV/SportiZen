@@ -1,3 +1,343 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ============================================================
+   SPORTIZEN — Global Sports-Inspired Design System
+   ============================================================ */
+
+@layer base {
+  :root {
+    --color-navy:        #0a0f1e;
+    --color-navy-light:  #111827;
+    --color-electric:    #f97316;
+    --color-teal:        #14b8a6;
+    --color-violet:      #8b5cf6;
+    --color-gold:        #f59e0b;
+    --color-success:     #22c55e;
+    --color-danger:      #ef4444;
+  }
+
+  html {
+    font-family: 'Inter', sans-serif;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white;
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: #475569; }
+}
+
+@layer components {
+  /* ---- GLASS CARD ---- */
+  .glass {
+    @apply bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border border-white/20 dark:border-gray-700/50;
+  }
+
+  .glass-dark {
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* ---- SPORTS CARD ---- */
+  .card-sports {
+    @apply bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm
+           hover:shadow-xl hover:-translate-y-1 transition-all duration-300;
+  }
+
+  /* ---- GRADIENT UTILITIES ---- */
+  .gradient-sports {
+    background: linear-gradient(135deg, #1e40af 0%, #0ea5e9 50%, #14b8a6 100%);
+  }
+
+  .gradient-energy {
+    background: linear-gradient(135deg, #f97316 0%, #ef4444 50%, #ec4899 100%);
+  }
+
+  .gradient-gold {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  }
+
+  .gradient-hero {
+    background: linear-gradient(135deg, #0a0f1e 0%, #1e1b4b 40%, #0f172a 100%);
+  }
+
+  /* ---- TEXT GRADIENT ---- */
+  .text-gradient-sports {
+    background: linear-gradient(90deg, #3b82f6, #14b8a6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .text-gradient-energy {
+    background: linear-gradient(90deg, #f97316, #ef4444);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* ---- BUTTONS ---- */
+  .btn-primary {
+    @apply bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600
+           text-white font-bold px-6 py-2.5 rounded-xl transition-all duration-200
+           shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105
+           active:scale-100 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-energy {
+    @apply bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600
+           text-white font-bold px-6 py-2.5 rounded-xl transition-all duration-200
+           shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105
+           active:scale-100;
+  }
+
+  .btn-ghost {
+    @apply border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400
+           hover:bg-gray-100 dark:hover:bg-gray-700/50 font-bold px-6 py-2.5 rounded-xl
+           transition-all duration-200;
+  }
+
+  .btn-success {
+    @apply bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600
+           text-white font-bold px-4 py-2 rounded-xl transition-all duration-200
+           shadow-md shadow-green-500/20;
+  }
+
+  .btn-danger {
+    @apply bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600
+           text-white font-bold px-4 py-2 rounded-xl transition-all duration-200
+           shadow-md shadow-red-500/20;
+  }
+
+  /* ---- INPUT ---- */
+  .input-sports {
+    @apply w-full px-4 py-3 border border-gray-200 dark:border-gray-600
+           rounded-xl bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white
+           placeholder-gray-400 text-sm font-medium
+           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+           transition-all duration-200;
+  }
+
+  /* ---- BADGE ---- */
+  .badge-player {
+    @apply px-2.5 py-1 bg-blue-500 text-white text-[10px] font-black rounded-full uppercase tracking-wider;
+  }
+
+  .badge-coach {
+    @apply px-2.5 py-1 bg-emerald-500 text-white text-[10px] font-black rounded-full uppercase tracking-wider;
+  }
+
+  .badge-org {
+    @apply px-2.5 py-1 bg-orange-500 text-white text-[10px] font-black rounded-full uppercase tracking-wider;
+  }
+
+  .badge-verified {
+    @apply flex items-center px-2.5 py-0.5 bg-green-50 dark:bg-green-950/20
+           text-green-600 dark:text-green-400 text-[10px] font-black rounded-full
+           border border-green-200 dark:border-green-800 uppercase tracking-wider;
+  }
+
+  /* ---- SKELETON ---- */
+  .skeleton {
+    @apply bg-gray-200 dark:bg-gray-700 rounded-xl animate-pulse;
+  }
+
+  .skeleton-text {
+    @apply h-4 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse;
+  }
+
+  /* ---- NAV LINK ---- */
+  .nav-link {
+    @apply flex items-center px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200
+           text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400
+           hover:bg-blue-50 dark:hover:bg-blue-950/20;
+  }
+
+  .nav-link-active {
+    @apply bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25;
+  }
+
+  /* ---- STAT CARD ---- */
+  .stat-card {
+    @apply bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-100 dark:border-gray-700
+           shadow-sm flex items-center justify-between hover:shadow-md transition-all duration-200;
+  }
+
+  /* ---- SECTION HEADER ---- */
+  .section-header {
+    @apply text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2 mb-4;
+  }
+
+  /* ---- EMPTY STATE ---- */
+  .empty-state {
+    @apply text-center py-12 border-2 border-dashed border-gray-200 dark:border-gray-700
+           rounded-2xl flex flex-col items-center gap-3;
+  }
+}
+
+@layer utilities {
+  /* ---- ANIMATIONS ---- */
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.6s ease-out forwards;
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight 0.4s ease-out forwards;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+
+  .animate-shimmer {
+    animation: shimmer 1.5s infinite;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+    background-size: 200% 100%;
+  }
+
+  /* ---- LINE CLAMP ---- */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* ---- GLOW EFFECT ---- */
+  .glow-blue {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+  }
+
+  .glow-orange {
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.4);
+  }
+
+  .glow-green {
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+  }
+}
+
+/* ============================================================
+   KEYFRAMES
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-12px); }
+}
+
+@keyframes glow {
+  from { box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
+  to   { box-shadow: 0 0 30px rgba(59, 130, 246, 0.7); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* ============================================================
+   LANDING PAGE ANIMATIONS
+   ============================================================ */
+.hero-text-1 { animation: fadeInUp 0.8s 0.1s ease-out both; }
+.hero-text-2 { animation: fadeInUp 0.8s 0.3s ease-out both; }
+.hero-text-3 { animation: fadeInUp 0.8s 0.5s ease-out both; }
+.hero-btn-1  { animation: fadeInUp 0.8s 0.7s ease-out both; }
+.hero-btn-2  { animation: fadeInUp 0.8s 0.9s ease-out both; }
+
+/* ============================================================
+   POST CARD ENHANCEMENTS
+   ============================================================ */
+.post-card {
+  animation: fadeInUp 0.4s ease-out both;
+}
+
+.post-card:hover {
+  transform: translateY(-2px);
+}
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+.nav-blur {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ============================================================
+   MOBILE BOTTOM NAV
+   ============================================================ */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ============================================================
+   PROFILE COVER GRADIENT FALLBACK
+   ============================================================ */
+.cover-gradient {
+  background: linear-gradient(135deg, #1e40af 0%, #7c3aed 50%, #0ea5e9 100%);
+}
+
+/* ============================================================
+   EVENT CARD SPORT GLOW
+   ============================================================ */
+.event-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, rgba(59,130,246,0.05), rgba(20,184,166,0.05));
+  pointer-events: none;
+}

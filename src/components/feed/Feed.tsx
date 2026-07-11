@@ -1,107 +1,133 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { Post } from '../../types';
+import { postService } from '../../services/supabaseService';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import PostCard from './PostCard';
 import CreatePost from './CreatePost';
+import SkeletonCard from '../ui/SkeletonCard';
+
+const PAGE_SIZE = 10;
 
 const Feed: React.FC = () => {
+  const { user } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [showCreatePost, setShowCreatePost] = useState(false);
 
-  const samplePosts: Post[] = [
-    {
-      id: '1',
-      userId: '1',
-      username: 'athlete_mike',
-      name: 'Mike Johnson',
-      content: 'Just completed my first marathon! 🏃‍♂️ Amazing feeling crossing that finish line after months of training. Thank you to everyone who supported me along the way!',
-      type: 'achievement',
-      timestamp: '2 hours ago',
-      likes: [],
-      comments: []
-    },
-    {
-      id: '2',
-      userId: '2',
-      username: 'swimmer_sara',
-      name: 'Sarah Davis',
-      content: 'Early morning pool session ✅ Nothing beats the feeling of gliding through the water as the sun rises. Ready to tackle the day!',
-      type: 'general',
-      timestamp: '5 hours ago',
-      likes: [],
-      comments: []
+  const loadPosts = useCallback(async (pageNum = 0, append = false) => {
+    if (pageNum === 0) setLoading(true); else setLoadingMore(true);
+    try {
+      const newPosts = await postService.getFeed(pageNum, PAGE_SIZE);
+      if (append) {
+        setPosts((prev) => [...prev, ...newPosts]);
+      } else {
+        setPosts(newPosts);
+      }
+      setHasMore(newPosts.length === PAGE_SIZE);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
     }
-  ];
+  }, []);
 
-  const allPosts = [...posts, ...samplePosts];
+  useEffect(() => {
+    loadPosts(0);
+  }, [loadPosts]);
 
-  const handleCreatePost = (newPost: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments'>) => {
-    const post: Post = {
-      ...newPost,
-      id: Date.now().toString(),
-      timestamp: 'just now',
-      likes: [],
-      comments: []
-    };
-    setPosts([post, ...posts]);
+  // Realtime: prepend new posts as they arrive
+  useEffect(() => {
+    const channel = supabase
+      .channel('posts-feed')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async () => {
+        // Reload page 0 fresh
+        const fresh = await postService.getFeed(0, PAGE_SIZE);
+        setPosts(fresh);
+        setPage(0);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    loadPosts(nextPage, true);
+  };
+
+  const handlePostCreated = () => {
     setShowCreatePost(false);
+    loadPosts(0);
+    setPage(0);
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Create Post Button */}
-      <div className="mb-8">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
+      {/* Create Post Trigger */}
+      <div className="mb-6">
         <button
           onClick={() => setShowCreatePost(true)}
-          className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 text-left hover:shadow-lg transition-all duration-200 group"
+          className="w-full glass rounded-2xl p-4 text-left hover:shadow-md transition-all duration-200 group"
         >
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center group-hover:bg-blue-600 transition-colors duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 gradient-sports rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform shadow-md">
               <Plus className="w-5 h-5 text-white" />
             </div>
-            <span className="text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors duration-200">
-              Share your athletic journey...
+            <span className="text-gray-400 dark:text-gray-500 font-semibold text-sm group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors">
+              Share your athletic achievements, coach tips, or announcement...
             </span>
           </div>
         </button>
       </div>
 
-      {/* Posts Feed */}
-      <div className="space-y-6">
-        {allPosts.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Plus className="w-8 h-8 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-500 dark:text-gray-400 mb-2">
-              No posts yet
-            </h3>
-            <p className="text-gray-400 dark:text-gray-500 mb-4">
-              Be the first to share your athletic journey!
-            </p>
-            <button
-              onClick={() => setShowCreatePost(true)}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors duration-200"
-            >
-              Create First Post
-            </button>
+      {/* Posts */}
+      {loading ? (
+        <div className="space-y-6">
+          <SkeletonCard type="post" count={3} />
+        </div>
+      ) : posts.length === 0 ? (
+        <div className="text-center py-16 card-sports">
+          <Plus className="w-16 h-16 text-gray-200 dark:text-gray-700 mx-auto mb-4 animate-pulse" />
+          <h3 className="text-lg font-bold text-gray-500 dark:text-gray-400 mb-1">No posts yet</h3>
+          <p className="text-gray-400 text-sm mb-4">Be the first to share your athletic journey!</p>
+          <button onClick={() => setShowCreatePost(true)} className="btn-primary text-sm">
+            Create First Post
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-6">
+            {posts.map((post, index) => (
+              <div key={post.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 40}ms`, animationFillMode: 'both' }}>
+                <PostCard post={post} onUpdate={() => loadPosts(0)} />
+              </div>
+            ))}
           </div>
-        ) : (
-          allPosts.map((post, index) => (
-            <PostCard 
-              key={post.id} 
-              post={post} 
-              style={{ animationDelay: `${index * 100}ms` }}
-            />
-          ))
-        )}
-      </div>
+
+          {/* Load More */}
+          {hasMore && (
+            <div className="mt-6 text-center">
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="btn-ghost text-sm px-8"
+              >
+                {loadingMore ? 'Loading...' : 'Load More Posts'}
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Create Post Modal */}
       {showCreatePost && (
         <CreatePost
           onClose={() => setShowCreatePost(false)}
-          onCreatePost={handleCreatePost}
+          onCreatePost={handlePostCreated}
         />
       )}
     </div>

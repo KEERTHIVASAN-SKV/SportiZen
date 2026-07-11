@@ -1,65 +1,247 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
-import AuthPage from './components/auth/AuthPage';
 import Navigation from './components/layout/Navigation';
-import Dashboard from './components/dashboard/Dashboard';
-import ProfilePage from './components/profile/ProfilePage';
-import SearchPage from './components/search/SearchPage';
-import Feed from './components/feed/Feed';
 import AnimatedBackground from './components/AnimatedBackground';
+import LoadingSpinner from './components/ui/LoadingSpinner';
 
-const AppContent: React.FC = () => {
+// Lazy-loaded pages
+const LandingPage = lazy(() => import('./components/landing/LandingPage'));
+const AuthPage = lazy(() => import('./components/auth/AuthPage'));
+const Dashboard = lazy(() => import('./components/dashboard/Dashboard'));
+const ProfilePage = lazy(() => import('./components/profile/ProfilePage'));
+const PublicProfileRouter = lazy(() => import('./components/profile/PublicProfileRouter'));
+const SearchPage = lazy(() => import('./components/search/SearchPage'));
+const Feed = lazy(() => import('./components/feed/Feed'));
+const EventsPage = lazy(() => import('./components/events/EventsPage'));
+const ManageEvents = lazy(() => import('./components/events/ManageEvents'));
+const VerificationPage = lazy(() => import('./components/verification/VerificationPage'));
+const NotificationsList = lazy(() => import('./components/layout/NotificationsList'));
+
+// -------------------------------------------------------
+// ROUTE GUARDS
+// -------------------------------------------------------
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingSpinner fullScreen />;
+  if (!user) return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
+
+const PublicOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingSpinner fullScreen />;
+  if (user) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+};
+
+const OrgOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingSpinner fullScreen />;
+  if (!user) return <Navigate to="/" replace />;
+  if (user.role !== 'organization') return <Navigate to="/events" replace />;
+  return <>{children}</>;
+};
+
+// -------------------------------------------------------
+// APP SHELL (with navigation)
+// -------------------------------------------------------
+const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+    <AnimatedBackground />
+    <Navigation />
+    <main className="relative z-10">
+      <Suspense fallback={<LoadingSpinner fullScreen />}>
+        {children}
+      </Suspense>
+    </main>
+  </div>
+);
+
+// -------------------------------------------------------
+// MAIN ROUTES
+// -------------------------------------------------------
+const AppRoutes: React.FC = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard');
-
-  if (!user) {
-    return <AuthPage />;
-  }
-
-  const renderActiveTab = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'profile':
-        return <ProfilePage />;
-      case 'search':
-        return <SearchPage />;
-      case 'connections':
-        return <Feed />;
-      case 'messages':
-        return <div className="max-w-7xl mx-auto px-4 py-8 text-center">
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Messages</h2>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">Coming soon!</p>
-        </div>;
-      case 'notifications':
-        return <div className="max-w-7xl mx-auto px-4 py-8 text-center">
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Notifications</h2>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">Coming soon!</p>
-        </div>;
-      default:
-        return <Dashboard />;
-    }
-  };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <AnimatedBackground />
-      <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
-      <main className="relative z-10">
-        {renderActiveTab()}
-      </main>
-    </div>
+    <Routes>
+      {/* Public: landing / auth */}
+      <Route
+        path="/"
+        element={
+          <PublicOnlyRoute>
+            <Suspense fallback={<LoadingSpinner fullScreen />}>
+              <LandingPage />
+            </Suspense>
+          </PublicOnlyRoute>
+        }
+      />
+      <Route
+        path="/auth"
+        element={
+          <PublicOnlyRoute>
+            <Suspense fallback={<LoadingSpinner fullScreen />}>
+              <AuthPage />
+            </Suspense>
+          </PublicOnlyRoute>
+        }
+      />
+
+      {/* Protected routes (use AppShell with nav) */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <Dashboard />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <ProfilePage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/feed"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <Feed />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/search"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <SearchPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/events"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              {user?.role === 'organization' ? <ManageEvents /> : <EventsPage />}
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/manage-events"
+        element={
+          <OrgOnlyRoute>
+            <AppShell>
+              <ManageEvents />
+            </AppShell>
+          </OrgOnlyRoute>
+        }
+      />
+      <Route
+        path="/verification"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <VerificationPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/notifications"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <NotificationsList />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Public profile routes */}
+      <Route
+        path="/player/:id"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <PublicProfileRouter role="player" />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/coach/:id"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <PublicProfileRouter role="coach" />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organization/:id"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <PublicProfileRouter role="organization" />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Fallback */}
+      <Route path="*" element={<Navigate to={user ? '/dashboard' : '/'} replace />} />
+    </Routes>
   );
 };
 
+// -------------------------------------------------------
+// ROOT APP
+// -------------------------------------------------------
 const App: React.FC = () => {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ThemeProvider>
+    <BrowserRouter>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppRoutes />
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              duration: 4000,
+              style: {
+                background: '#1e293b',
+                color: '#f1f5f9',
+                border: '1px solid #334155',
+                borderRadius: '12px',
+                fontSize: '14px',
+                fontWeight: '600',
+              },
+              success: {
+                iconTheme: { primary: '#22c55e', secondary: '#fff' },
+              },
+              error: {
+                iconTheme: { primary: '#ef4444', secondary: '#fff' },
+              },
+            }}
+          />
+        </AuthProvider>
+      </ThemeProvider>
+    </BrowserRouter>
   );
 };
 

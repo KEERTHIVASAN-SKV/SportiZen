@@ -1,161 +1,256 @@
-import React, { useState } from 'react';
-import { Heart, MessageCircle, Share2, Trophy, MoreHorizontal } from 'lucide-react';
-import { Post } from '../../types';
+import React, { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  Heart, MessageCircle, MoreHorizontal, Trash2, ChevronDown, Send, ShieldCheck,
+} from 'lucide-react';
+import { Post, Comment } from '../../types';
+import { postService, commentService } from '../../services/supabaseService';
+import toast from 'react-hot-toast';
+import Avatar from '../ui/Avatar';
+import Badge from '../ui/Badge';
 
 interface PostCardProps {
   post: Post;
+  onUpdate: () => void;
   style?: React.CSSProperties;
 }
 
-const PostCard: React.FC<PostCardProps> = ({ post, style }) => {
-  const [isLiked, setIsLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState(post.likes.length);
-  const [showComments, setShowComments] = useState(false);
+const typeEmoji: Record<string, string> = {
+  achievement: '🏆',
+  milestone: '🎯',
+  coaching_update: '📋',
+  announcement: '📢',
+  general: '💬',
+};
 
-  const handleLike = () => {
-    setIsLiked(!isLiked);
-    setLikesCount(prev => isLiked ? prev - 1 : prev + 1);
+const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, style }) => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<Comment[]>(post.comments || []);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentInput, setCommentInput] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [liked, setLiked] = useState(post.likes.includes(user?.id || ''));
+  const [likesCount, setLikesCount] = useState(post.likes.length);
+  const [showOptions, setShowOptions] = useState(false);
+
+  const isOwner = user?.id === post.userId;
+
+  const profilePath = () => {
+    if (post.role === 'player') return `/player/${post.userId}`;
+    if (post.role === 'coach') return `/coach/${post.userId}`;
+    return `/organization/${post.userId}`;
   };
 
-  const getPostIcon = () => {
-    switch (post.type) {
-      case 'achievement':
-        return <Trophy className="w-4 h-4 text-yellow-500" />;
-      case 'milestone':
-        return <Trophy className="w-4 h-4 text-green-500" />;
-      default:
-        return null;
+  const handleLike = useCallback(async () => {
+    if (!user) return;
+    const wasLiked = liked;
+    setLiked(!wasLiked);
+    setLikesCount((c) => wasLiked ? c - 1 : c + 1);
+    try {
+      await postService.like(post.id, user.id);
+    } catch {
+      setLiked(wasLiked);
+      setLikesCount((c) => wasLiked ? c + 1 : c - 1);
+    }
+  }, [liked, user, post.id]);
+
+  const handleToggleComments = async () => {
+    if (!showComments && comments.length === 0) {
+      setLoadingComments(true);
+      try {
+        const fetched = await commentService.getForPost(post.id);
+        setComments(fetched);
+      } finally {
+        setLoadingComments(false);
+      }
+    }
+    setShowComments(!showComments);
+  };
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !commentInput.trim()) return;
+    setSubmittingComment(true);
+    try {
+      const newComment = await commentService.add({
+        postId: post.id,
+        userId: user.id,
+        content: commentInput.trim(),
+      });
+      if (newComment) {
+        setComments((prev) => [...prev, newComment]);
+        setCommentInput('');
+        if (!showComments) setShowComments(true);
+      }
+    } finally {
+      setSubmittingComment(false);
     }
   };
 
+  const handleDelete = async () => {
+    if (!isOwner) return;
+    const success = await postService.delete(post.id);
+    if (success) {
+      toast.success('Post deleted.');
+      onUpdate();
+    } else {
+      toast.error('Failed to delete post.');
+    }
+    setShowOptions(false);
+  };
+
+  const timeAgo = (timestamp: string) => {
+    const diff = Date.now() - new Date(timestamp).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
+
   return (
-    <div 
-      className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg transition-all duration-200"
-      style={style}
-    >
-      {/* Post Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-start space-x-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-green-500 rounded-full flex items-center justify-center">
-            <span className="text-white font-semibold">
-              {post.name.charAt(0)}
-            </span>
-          </div>
-          
-          <div>
-            <div className="flex items-center space-x-2">
-              <h3 className="font-semibold text-gray-800 dark:text-white">
-                {post.name}
-              </h3>
-              {getPostIcon()}
+    <div className="post-card card-sports overflow-hidden" style={style}>
+      {/* Header */}
+      <div className="p-5 pb-3">
+        <div className="flex items-start justify-between">
+          <div
+            className="flex items-center gap-3 cursor-pointer group"
+            onClick={() => navigate(profilePath())}
+          >
+            <Avatar src={post.profilePicture} name={post.name} size="md" role={post.role} />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-gray-800 dark:text-white text-sm group-hover:text-blue-500 transition-colors">
+                  {post.name}
+                </span>
+                <Badge variant={post.role} />
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[11px] text-gray-400">@{post.username}</span>
+                <span className="text-gray-300 dark:text-gray-600">·</span>
+                <span className="text-[11px] text-gray-400">{timeAgo(post.timestamp)}</span>
+                {post.type !== 'general' && (
+                  <>
+                    <span className="text-gray-300 dark:text-gray-600">·</span>
+                    <span className="text-[11px] font-bold text-blue-500">
+                      {typeEmoji[post.type]} {post.type.replace('_', ' ')}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
-            <p className="text-gray-600 dark:text-gray-400 text-sm">@{post.username}</p>
-            <p className="text-gray-500 dark:text-gray-500 text-xs">{post.timestamp}</p>
           </div>
+
+          {/* Options */}
+          {isOwner && (
+            <div className="relative">
+              <button
+                onClick={() => setShowOptions(!showOptions)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+              {showOptions && (
+                <div className="absolute right-0 top-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-10 overflow-hidden w-36">
+                  <button
+                    onClick={handleDelete}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 text-sm font-bold"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete Post
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors duration-200">
-          <MoreHorizontal className="w-4 h-4 text-gray-500" />
-        </button>
-      </div>
-
-      {/* Post Content */}
-      <div className="mb-4">
-        <p className="text-gray-800 dark:text-white leading-relaxed">
+        {/* Content */}
+        <p className="mt-3 text-gray-700 dark:text-gray-200 text-sm leading-relaxed whitespace-pre-line">
           {post.content}
         </p>
-        
-        {post.image && (
-          <div className="mt-4 rounded-xl overflow-hidden">
-            <img
-              src={post.image}
-              alt="Post content"
-              className="w-full h-64 object-cover hover:scale-105 transition-transform duration-300"
-            />
-          </div>
-        )}
       </div>
 
-      {/* Post Actions */}
-      <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={handleLike}
-            className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-200 hover:bg-gray-50 dark:hover:bg-gray-700 ${
-              isLiked ? 'text-red-500' : 'text-gray-600 dark:text-gray-400'
-            }`}
-          >
-            <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
-            <span className="text-sm font-medium">{likesCount}</span>
-          </button>
-
-          <button
-            onClick={() => setShowComments(!showComments)}
-            className="flex items-center space-x-2 px-3 py-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
-          >
-            <MessageCircle className="w-5 h-5" />
-            <span className="text-sm font-medium">{post.comments.length}</span>
-          </button>
-
-          <button className="flex items-center space-x-2 px-3 py-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200">
-            <Share2 className="w-5 h-5" />
-            <span className="text-sm font-medium">Share</span>
-          </button>
+      {/* Image */}
+      {post.image && (
+        <div className="mx-5 mb-4">
+          <img
+            src={post.image}
+            alt="Post"
+            className="w-full rounded-xl object-cover max-h-80"
+            loading="lazy"
+          />
         </div>
+      )}
 
-        {post.type === 'achievement' && (
-          <div className="flex items-center space-x-2 px-3 py-1 bg-yellow-50 dark:bg-yellow-900/20 rounded-full">
-            <Trophy className="w-4 h-4 text-yellow-500" />
-            <span className="text-xs font-medium text-yellow-700 dark:text-yellow-400">
-              Achievement
-            </span>
-          </div>
-        )}
+      {/* Actions */}
+      <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-700 flex items-center gap-4">
+        <button
+          onClick={handleLike}
+          className={`flex items-center gap-1.5 text-sm font-bold transition-all ${
+            liked ? 'text-red-500 scale-110' : 'text-gray-400 hover:text-red-500'
+          }`}
+        >
+          <Heart className={`w-4.5 h-4.5 w-[18px] h-[18px] transition-transform ${liked ? 'fill-red-500 scale-110' : ''}`} />
+          {likesCount > 0 && <span>{likesCount}</span>}
+        </button>
+
+        <button
+          onClick={handleToggleComments}
+          className="flex items-center gap-1.5 text-sm font-bold text-gray-400 hover:text-blue-500 transition-colors"
+        >
+          <MessageCircle className="w-[18px] h-[18px]" />
+          {comments.length > 0 && <span>{comments.length}</span>}
+        </button>
       </div>
 
       {/* Comments Section */}
       {showComments && (
-        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-          <div className="space-y-3">
-            {post.comments.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-4">
-                No comments yet. Be the first to comment!
-              </p>
-            ) : (
-              post.comments.map((comment) => (
-                <div key={comment.id} className="flex space-x-3">
-                  <div className="w-8 h-8 bg-gray-300 rounded-full flex-shrink-0"></div>
-                  <div className="flex-1">
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
-                      <p className="font-medium text-sm text-gray-800 dark:text-white">
-                        @{comment.username}
-                      </p>
-                      <p className="text-gray-700 dark:text-gray-300 text-sm">
-                        {comment.content}
-                      </p>
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                      {comment.timestamp}
-                    </p>
-                  </div>
+        <div className="px-5 pb-4 space-y-3">
+          {loadingComments ? (
+            <div className="flex justify-center py-4">
+              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            comments.map((comment) => (
+              <div key={comment.id} className="flex gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-teal-400 flex items-center justify-center text-white text-[10px] font-black flex-shrink-0">
+                  {(comment.username || '?').charAt(0).toUpperCase()}
                 </div>
-              ))
-            )}
-          </div>
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl px-3 py-2 flex-1">
+                  <span className="text-[11px] font-black text-gray-700 dark:text-gray-300">@{comment.username} </span>
+                  <span className="text-xs text-gray-600 dark:text-gray-400">{comment.content}</span>
+                </div>
+              </div>
+            ))
+          )}
 
           {/* Add Comment */}
-          <div className="mt-4 flex space-x-3">
-            <div className="w-8 h-8 bg-blue-500 rounded-full flex-shrink-0 flex items-center justify-center">
-              <span className="text-white text-xs font-semibold">You</span>
-            </div>
-            <div className="flex-1">
-              <input
-                type="text"
-                placeholder="Write a comment..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-              />
-            </div>
-          </div>
+          {user && (
+            <form onSubmit={handleAddComment} className="flex gap-2 mt-3">
+              <Avatar src={user.profilePicture} name={user.name} size="xs" role={user.role} />
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Add a comment..."
+                  value={commentInput}
+                  onChange={(e) => setCommentInput(e.target.value)}
+                  className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-white placeholder-gray-400"
+                />
+                <button
+                  type="submit"
+                  disabled={!commentInput.trim() || submittingComment}
+                  className="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl disabled:opacity-50 transition-all"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       )}
     </div>

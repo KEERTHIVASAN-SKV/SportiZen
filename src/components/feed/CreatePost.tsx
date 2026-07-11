@@ -1,179 +1,206 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { X, Image, Trophy, Megaphone, Target, BookOpen, MessageCircle, Upload } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { X, Image, Trophy, Calendar, Type } from 'lucide-react';
-import { Post } from '../../types';
+import { postService } from '../../services/supabaseService';
+import { supabase } from '../../lib/supabase';
+import toast from 'react-hot-toast';
 
 interface CreatePostProps {
   onClose: () => void;
-  onCreatePost: (post: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments'>) => void;
+  onCreatePost: () => void;
 }
+
+type PostType = 'general' | 'achievement' | 'milestone' | 'coaching_update' | 'announcement';
+
+const typeOptions: { value: PostType; label: string; icon: React.ElementType; color: string }[] = [
+  { value: 'general', label: 'General', icon: MessageCircle, color: 'text-blue-500' },
+  { value: 'achievement', label: 'Achievement', icon: Trophy, color: 'text-amber-500' },
+  { value: 'milestone', label: 'Milestone', icon: Target, color: 'text-purple-500' },
+  { value: 'coaching_update', label: 'Coaching Update', icon: BookOpen, color: 'text-green-500' },
+  { value: 'announcement', label: 'Announcement', icon: Megaphone, color: 'text-orange-500' },
+];
 
 const CreatePost: React.FC<CreatePostProps> = ({ onClose, onCreatePost }) => {
   const { user } = useAuth();
   const [content, setContent] = useState('');
-  const [postType, setPostType] = useState<'general' | 'achievement' | 'milestone'>('general');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [postType, setPostType] = useState<PostType>('general');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  if (!user) return null;
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be less than 5MB');
+      return;
+    }
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() || !user) return;
+    if (!content.trim()) return;
 
-    setIsSubmitting(true);
-    
-    const newPost = {
-      userId: user.id,
-      username: user.username,
-      name: user.name,
-      profilePicture: user.profilePicture,
-      content: content.trim(),
-      type: postType,
-    };
+    setUploading(true);
+    try {
+      let imageUrl: string | undefined;
 
-    onCreatePost(newPost);
-    setIsSubmitting(false);
-    onClose();
+      // Upload image to Supabase Storage if provided
+      if (imageFile) {
+        const ext = imageFile.name.split('.').pop();
+        const path = `${user.id}/${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from('post-media')
+          .upload(path, imageFile, { upsert: false });
+
+        if (!uploadError) {
+          const { data } = supabase.storage.from('post-media').getPublicUrl(path);
+          imageUrl = data.publicUrl;
+        }
+      }
+
+      const newPost = await postService.create({
+        userId: user.id,
+        content: content.trim(),
+        type: postType,
+        image: imageUrl,
+      });
+
+      if (newPost) {
+        toast.success('Post published!');
+        onCreatePost();
+      } else {
+        toast.error('Failed to publish post. Please try again.');
+      }
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const postTypeOptions = [
-    {
-      type: 'general' as const,
-      icon: Type,
-      label: 'General Update',
-      description: 'Share your thoughts or daily activities',
-      color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20'
-    },
-    {
-      type: 'achievement' as const,
-      icon: Trophy,
-      label: 'Achievement',
-      description: 'Celebrate a milestone or victory',
-      color: 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20'
-    },
-    {
-      type: 'milestone' as const,
-      icon: Calendar,
-      label: 'Milestone',
-      description: 'Mark an important moment in your journey',
-      color: 'text-green-500 bg-green-50 dark:bg-green-900/20'
-    }
-  ];
+  const selectedType = typeOptions.find((t) => t.value === postType)!;
+  const Icon = selectedType.icon;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Create Post</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors duration-200"
-          >
-            <X className="w-5 h-5 text-gray-500" />
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-lg w-full border border-gray-100 dark:border-gray-700">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+          <h2 className="text-lg font-black text-gray-800 dark:text-white flex items-center gap-2">
+            <Icon className={`w-5 h-5 ${selectedType.color}`} />
+            Create Post
+          </h2>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
-          {/* User Info */}
-          <div className="flex items-center space-x-3 mb-6">
-            {user?.profilePicture ? (
-              <img
-                src={user.profilePicture}
-                alt={user.name}
-                className="w-12 h-12 rounded-full"
-              />
-            ) : (
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-green-500 rounded-full flex items-center justify-center">
-                <span className="text-white font-semibold">
-                  {user?.name.charAt(0)}
-                </span>
-              </div>
-            )}
-            <div>
-              <h3 className="font-semibold text-gray-800 dark:text-white">{user?.name}</h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">@{user?.username}</p>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Post Type Selector */}
+          <div>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-2">Post Type</label>
+            <div className="flex flex-wrap gap-2">
+              {typeOptions.map((type) => {
+                const TIcon = type.icon;
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setPostType(type.value)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                      postType === type.value
+                        ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-500/25'
+                        : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-300'
+                    }`}
+                  >
+                    <TIcon className="w-3.5 h-3.5" />
+                    {type.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Post Type Selection */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-              Post Type
-            </label>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {postTypeOptions.map((option) => (
-                <button
-                  key={option.type}
-                  type="button"
-                  onClick={() => setPostType(option.type)}
-                  className={`p-4 rounded-lg border-2 transition-all duration-200 text-left ${
-                    postType === option.type
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
-                  }`}
-                >
-                  <div className={`w-8 h-8 rounded-lg ${option.color} flex items-center justify-center mb-2`}>
-                    <option.icon className="w-4 h-4" />
-                  </div>
-                  <h4 className="font-medium text-gray-800 dark:text-white text-sm">
-                    {option.label}
-                  </h4>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    {option.description}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Content Input */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              What's on your mind?
-            </label>
+          {/* Content */}
+          <div>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder={
-                postType === 'achievement' 
-                  ? "Share your latest achievement..."
-                  : postType === 'milestone'
-                  ? "What milestone did you reach?"
-                  : "Share your thoughts..."
+                postType === 'achievement' ? "Share your achievement with the world! 🏆"
+                : postType === 'coaching_update' ? "Share a coaching tip or training update..."
+                : postType === 'announcement' ? "What would you like to announce?"
+                : "What's on your mind?"
               }
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
               rows={4}
-              required
+              className="input-sports resize-none"
+              maxLength={2000}
             />
-            <div className="flex justify-between items-center mt-2">
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                {content.length}/500 characters
-              </span>
-              <div className="flex space-x-2">
-                <button
-                  type="button"
-                  className="p-2 text-gray-500 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors duration-200"
-                >
-                  <Image className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+            <div className="text-right text-xs text-gray-400 mt-1">{content.length}/2000</div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors duration-200"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!content.trim() || isSubmitting}
-              className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? 'Posting...' : 'Post'}
-            </button>
+          {/* Image Preview */}
+          {imagePreview && (
+            <div className="relative">
+              <img src={imagePreview} alt="Preview" className="w-full rounded-xl max-h-48 object-cover" />
+              <button
+                type="button"
+                onClick={() => { setImageFile(null); setImagePreview(null); }}
+                className="absolute top-2 right-2 bg-black/60 text-white p-1.5 rounded-lg hover:bg-black/80 transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Actions Row */}
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-2 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-xl text-xs font-bold transition-all"
+              >
+                <Image className="w-4 h-4" />
+                Photo
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={onClose} className="btn-ghost text-sm px-4 py-2">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!content.trim() || uploading}
+                className="btn-primary text-sm flex items-center gap-2"
+              >
+                {uploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Publishing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    Publish
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>
