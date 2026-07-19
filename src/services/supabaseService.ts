@@ -1165,7 +1165,10 @@ export const storageService = {
       .from('avatars')
       .upload(path, file, { upsert: true });
 
-    if (error) return null;
+    if (error) {
+      console.error('[storage.uploadAvatar] Failed:', error.message);
+      return null;
+    }
 
     const { data } = supabase.storage.from('avatars').getPublicUrl(path);
     return data.publicUrl;
@@ -1193,7 +1196,10 @@ export const storageService = {
       .from('certificates')
       .upload(path, file, { upsert: false });
 
-    if (error) return null;
+    if (error) {
+      console.error('[storage.uploadCertificate] Failed:', error.message, '| Make sure fix_storage_policies.sql was run in Supabase SQL Editor.');
+      return null;
+    }
 
     const { data } = supabase.storage.from('certificates').getPublicUrl(path);
     return data.publicUrl;

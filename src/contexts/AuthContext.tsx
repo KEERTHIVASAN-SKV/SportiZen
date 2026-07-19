@@ -44,11 +44,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Check existing session on mount
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    // Check existing session on mount — with a 10-second timeout guard
+    // so that a missing/wrong Supabase env var never leaves the app stuck loading forever
+    const sessionTimeout = new Promise<void>((resolve) =>
+      setTimeout(() => {
+        console.warn('[AuthContext] Supabase session check timed out. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel → Settings → Environment Variables.');
+        resolve();
+      }, 10000)
+    );
+
+    const sessionCheck = supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         await loadProfile(session.user.id);
       }
+    }).catch((err) => {
+      console.error('[AuthContext] getSession() failed:', err);
+    });
+
+    Promise.race([sessionCheck, sessionTimeout]).finally(() => {
       setLoading(false);
     });
 
@@ -59,8 +72,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await loadProfile(session.user.id);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
-        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          // Keep user in sync
         }
         setLoading(false);
       }
