@@ -1,8 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { X, Image, Trophy, Megaphone, Target, BookOpen, MessageCircle, Upload } from 'lucide-react';
+import { X, Image, Trophy, Megaphone, Target, BookOpen, MessageCircle, Upload, Video } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { postService } from '../../services/supabaseService';
-import { supabase } from '../../lib/supabase';
+import { postService, storageService } from '../../services/supabaseService';
 import toast from 'react-hot-toast';
 
 interface CreatePostProps {
@@ -24,24 +23,42 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, onCreatePost }) => {
   const { user } = useAuth();
   const [content, setContent] = useState('');
   const [postType, setPostType] = useState<PostType>('general');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!user) return null;
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image must be less than 5MB');
+
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+
+    const maxSize = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+    const label = isVideo ? '50MB' : '5MB';
+
+    if (file.size > maxSize) {
+      toast.error(`File must be less than ${label}`);
       return;
     }
-    setImageFile(file);
+
+    setMediaFile(file);
+    setMediaType(isVideo ? 'video' : isImage ? 'image' : null);
+
     const reader = new FileReader();
-    reader.onloadend = () => setImagePreview(reader.result as string);
+    reader.onloadend = () => setMediaPreview(reader.result as string);
     reader.readAsDataURL(file);
+  };
+
+  const clearMedia = () => {
+    setMediaFile(null);
+    setMediaPreview(null);
+    setMediaType(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,39 +67,43 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, onCreatePost }) => {
 
     setUploading(true);
     try {
-      let imageUrl: string | undefined;
+      let mediaUrl: string | undefined;
 
-      // Upload image to Supabase Storage if provided
-      if (imageFile) {
-        const ext = imageFile.name.split('.').pop();
-        const path = `${user.id}/${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from('post-media')
-          .upload(path, imageFile, { upsert: false });
-
-        if (!uploadError) {
-          const { data } = supabase.storage.from('post-media').getPublicUrl(path);
-          imageUrl = data.publicUrl;
+      // Upload media to Supabase Storage if provided
+      if (mediaFile) {
+        const uploaded = await storageService.uploadPostMedia(user.id, mediaFile);
+        if (uploaded) {
+          mediaUrl = uploaded;
+        } else {
+          toast.error('Media upload failed. Post will be created without media.');
         }
       }
 
       const newPost = await postService.create({
         userId: user.id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        profilePicture: user.profilePicture,
         content: content.trim(),
         type: postType,
-        image: imageUrl,
+        image: mediaUrl,
       });
 
       if (newPost) {
-        toast.success('Post published!');
+        toast.success('Post published! 🚀');
         onCreatePost();
       } else {
         toast.error('Failed to publish post. Please try again.');
       }
+    } catch (err: any) {
+      console.error('[CreatePost] Publish failed:', err);
+      toast.error(err?.message || 'Failed to publish post. Please try again.');
     } finally {
       setUploading(false);
     }
   };
+
 
   const selectedType = typeOptions.find((t) => t.value === postType)!;
   const Icon = selectedType.icon;
@@ -145,28 +166,41 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, onCreatePost }) => {
             <div className="text-right text-xs text-gray-400 mt-1">{content.length}/2000</div>
           </div>
 
-          {/* Image Preview */}
-          {imagePreview && (
+          {/* Media Preview */}
+          {mediaPreview && (
             <div className="relative">
-              <img src={imagePreview} alt="Preview" className="w-full rounded-xl max-h-48 object-cover" />
+              {mediaType === 'video' ? (
+                <video
+                  src={mediaPreview}
+                  controls
+                  className="w-full rounded-xl max-h-48 object-cover bg-black"
+                />
+              ) : (
+                <img src={mediaPreview} alt="Preview" className="w-full rounded-xl max-h-48 object-cover" />
+              )}
               <button
                 type="button"
-                onClick={() => { setImageFile(null); setImagePreview(null); }}
+                onClick={clearMedia}
                 className="absolute top-2 right-2 bg-black/60 text-white p-1.5 rounded-lg hover:bg-black/80 transition-all"
               >
                 <X className="w-4 h-4" />
               </button>
+              {mediaType === 'video' && (
+                <div className="absolute top-2 left-2 bg-black/60 text-white px-2 py-0.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                  <Video className="w-3 h-3" /> Video
+                </div>
+              )}
             </div>
           )}
 
           {/* Actions Row */}
           <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
-                onChange={handleImageSelect}
+                accept="image/*,video/*"
+                onChange={handleMediaSelect}
                 className="hidden"
               />
               <button
@@ -176,6 +210,14 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, onCreatePost }) => {
               >
                 <Image className="w-4 h-4" />
                 Photo
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-2 text-gray-500 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-950/20 rounded-xl text-xs font-bold transition-all"
+              >
+                <Video className="w-4 h-4" />
+                Video
               </button>
             </div>
 

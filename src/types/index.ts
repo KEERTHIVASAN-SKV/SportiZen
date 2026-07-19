@@ -156,6 +156,16 @@ export interface Connection {
 }
 
 // -------------------------------------------------------
+// FOLLOWS (public.follows)
+// -------------------------------------------------------
+export interface Follow {
+  id: string;
+  followerId: string;
+  followingId: string;
+  createdAt: string;
+}
+
+// -------------------------------------------------------
 // VERIFICATION (public.verification_documents)
 // -------------------------------------------------------
 export interface VerificationDocument {
@@ -183,7 +193,8 @@ export interface Notification {
     | 'event_registration'
     | 'verification_status'
     | 'like'
-    | 'comment';
+    | 'comment'
+    | 'follow';
   isRead: boolean;
   createdAt: string;
 }

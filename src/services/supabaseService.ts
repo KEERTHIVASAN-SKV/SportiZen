@@ -10,6 +10,7 @@ import {
   Event,
   EventRegistration,
   Connection,
+  Follow,
   Achievement,
   VerificationDocument,
   Notification,
@@ -374,6 +375,10 @@ export const postService = {
 
   async create(params: {
     userId: string;
+    username: string;
+    name: string;
+    role: string;
+    profilePicture?: string;
     content: string;
     type: string;
     image?: string;
@@ -382,6 +387,10 @@ export const postService = {
       .from('posts')
       .insert({
         user_id: params.userId,
+        username: params.username,
+        name: params.name,
+        role: params.role,
+        profile_picture: params.profilePicture || null,
         content: params.content,
         type: params.type,
         image: params.image || null,
@@ -394,7 +403,11 @@ export const postService = {
       `)
       .single();
 
-    if (error || !data) return null;
+    if (error) {
+      console.error('[postService.create] Supabase error:', error.message, error.details || '');
+      throw new Error(error.message);
+    }
+    if (!data) return null;
     return mapPost(data);
   },
 
@@ -883,6 +896,101 @@ export const connectionService = {
 };
 
 // ------------------------------------------------------------------
+// FOLLOWS
+// ------------------------------------------------------------------
+export const followService = {
+  async follow(followerId: string, followingId: string): Promise<Follow | null> {
+    const { data, error } = await supabase
+      .from('follows')
+      .insert({ follower_id: followerId, following_id: followingId })
+      .select()
+      .single();
+
+    if (error || !data) return null;
+
+    // Notify the person being followed
+    const { data: follower } = await supabase
+      .from('profiles')
+      .select('name')
+      .eq('id', followerId)
+      .single();
+
+    await notificationService.create({
+      userId: followingId,
+      title: 'New Follower',
+      message: `${follower?.name || 'Someone'} started following you.`,
+      type: 'follow',
+    });
+
+    return {
+      id: data.id,
+      followerId: data.follower_id,
+      followingId: data.following_id,
+      createdAt: data.created_at,
+    };
+  },
+
+  async unfollow(followerId: string, followingId: string): Promise<boolean> {
+    const { error } = await supabase
+      .from('follows')
+      .delete()
+      .eq('follower_id', followerId)
+      .eq('following_id', followingId);
+    return !error;
+  },
+
+  async isFollowing(followerId: string, followingId: string): Promise<boolean> {
+    const { data } = await supabase
+      .from('follows')
+      .select('id')
+      .eq('follower_id', followerId)
+      .eq('following_id', followingId)
+      .maybeSingle();
+    return !!data;
+  },
+
+  async getFollowerCount(userId: string): Promise<number> {
+    const { count } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('following_id', userId);
+    return count || 0;
+  },
+
+  async getFollowingCount(userId: string): Promise<number> {
+    const { count } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('follower_id', userId);
+    return count || 0;
+  },
+
+  async getFollowers(userId: string): Promise<User[]> {
+    const { data, error } = await supabase
+      .from('follows')
+      .select(`
+        profiles:follower_id (*, player_profiles (*), coach_profiles (*), org_profiles (*))
+      `)
+      .eq('following_id', userId);
+
+    if (error || !data) return [];
+    return data.map((r: any) => r.profiles).filter(Boolean).map(mapProfile);
+  },
+
+  async getFollowing(userId: string): Promise<User[]> {
+    const { data, error } = await supabase
+      .from('follows')
+      .select(`
+        profiles:following_id (*, player_profiles (*), coach_profiles (*), org_profiles (*))
+      `)
+      .eq('follower_id', userId);
+
+    if (error || !data) return [];
+    return data.map((r: any) => r.profiles).filter(Boolean).map(mapProfile);
+  },
+};
+
+// ------------------------------------------------------------------
 // VERIFICATION DOCUMENTS
 // ------------------------------------------------------------------
 export const verificationService = {
@@ -947,7 +1055,7 @@ export const verificationService = {
         user_id: org.id,
         title: 'New Verification Request',
         message: `${params.playerName} uploaded a ${params.documentType.replace('_', ' ')} for verification.`,
-        type: 'connection_request',
+        type: 'verification_status',
       }));
       await supabase.from('notifications').insert(notifs);
     }
@@ -1088,6 +1196,48 @@ export const storageService = {
     if (error) return null;
 
     const { data } = supabase.storage.from('certificates').getPublicUrl(path);
+    return data.publicUrl;
+  },
+
+  async uploadCover(userId: string, file: File): Promise<string | null> {
+    const ext = file.name.split('.').pop();
+    const path = `${userId}/cover.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('covers')
+      .upload(path, file, { upsert: true });
+
+    if (error) return null;
+
+    const { data } = supabase.storage.from('covers').getPublicUrl(path);
+    return data.publicUrl;
+  },
+
+  async uploadPostMedia(userId: string, file: File): Promise<string | null> {
+    const ext = file.name.split('.').pop();
+    const path = `${userId}/${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('post-media')
+      .upload(path, file, { upsert: false });
+
+    if (error) return null;
+
+    const { data } = supabase.storage.from('post-media').getPublicUrl(path);
+    return data.publicUrl;
+  },
+
+  async uploadAchievementImage(userId: string, file: File): Promise<string | null> {
+    const ext = file.name.split('.').pop();
+    const path = `${userId}/${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('achievement-media')
+      .upload(path, file, { upsert: false });
+
+    if (error) return null;
+
+    const { data } = supabase.storage.from('achievement-media').getPublicUrl(path);
     return data.publicUrl;
   },
 };

@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { X, Save, Plus, Trophy, Award, Trash2 } from 'lucide-react';
+import { X, Save, Plus, Trophy, Award, Trash2, Image, Loader2 } from 'lucide-react';
 import { User, SPORTS_CATEGORIES, Achievement } from '../../types';
+import { achievementService, storageService } from '../../services/supabaseService';
+import toast from 'react-hot-toast';
 
 interface ProfileEditorProps {
   user: User;
@@ -37,7 +39,8 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, onClose }) => {
   );
   const [newCert, setNewCert] = useState('');
 
-  // Achievements fields
+  // Achievements
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [newAchievement, setNewAchievement] = useState({
     title: '',
     description: '',
@@ -45,6 +48,12 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, onClose }) => {
     date: new Date().toISOString().split('T')[0]
   });
   const [showAddAchievement, setShowAddAchievement] = useState(false);
+  const [achievementImageFile, setAchievementImageFile] = useState<File | null>(null);
+  const [achievementImagePreview, setAchievementImagePreview] = useState<string | null>(null);
+  const [savingAchievement, setSavingAchievement] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const achievementImageRef = useRef<HTMLInputElement>(null);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -65,27 +74,70 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, onClose }) => {
     }
   };
 
-  const handleAddAchievement = () => {
-    if (newAchievement.title && newAchievement.description) {
-      const achievement: Achievement = {
-        id: Date.now().toString(),
+  const handleAchievementImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be less than 5MB');
+      return;
+    }
+    setAchievementImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setAchievementImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleAddAchievement = async () => {
+    if (!newAchievement.title || !newAchievement.description) {
+      toast.error('Title and description are required.');
+      return;
+    }
+    setSavingAchievement(true);
+    try {
+      let imageUrl: string | undefined;
+
+      // Upload image if provided
+      if (achievementImageFile) {
+        const uploaded = await storageService.uploadAchievementImage(user.id, achievementImageFile);
+        if (uploaded) imageUrl = uploaded;
+      }
+
+      // Save to Supabase achievements table
+      const saved = await achievementService.add(user.id, {
         title: newAchievement.title,
         description: newAchievement.description,
+        date: newAchievement.date,
         type: newAchievement.type,
-        date: newAchievement.date
-      };
-
-      updateUser({
-        achievements: [...user.achievements, achievement]
+        image_url: imageUrl,
       });
 
-      setNewAchievement({
-        title: '',
-        description: '',
-        type: 'trophy',
-        date: new Date().toISOString().split('T')[0]
-      });
-      setShowAddAchievement(false);
+      if (saved) {
+        toast.success('Achievement added! 🏆');
+        setAchievements(prev => [saved, ...prev]);
+        setNewAchievement({
+          title: '',
+          description: '',
+          type: 'trophy',
+          date: new Date().toISOString().split('T')[0]
+        });
+        setAchievementImageFile(null);
+        setAchievementImagePreview(null);
+        setShowAddAchievement(false);
+      } else {
+        toast.error('Failed to save achievement. Please try again.');
+      }
+    } catch (err) {
+      toast.error('An error occurred saving the achievement.');
+    } finally {
+      setSavingAchievement(false);
+    }
+  };
+
+  const handleDeleteAchievement = async (id: string) => {
+    const ok = await achievementService.delete(id);
+    if (ok) {
+      setAchievements(prev => prev.filter(a => a.id !== id));
+      toast.success('Achievement removed.');
     }
   };
 
@@ -100,66 +152,74 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, onClose }) => {
     setCoachCertifications(prev => prev.filter((_, i) => i !== indexToRemove));
   };
 
-  const handleSave = () => {
-    let payload: Partial<User> = {};
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      let payload: Partial<User> = {};
 
-    if (user.role === 'player') {
-      payload = {
-        name: formData.name,
-        sport: formData.sport,
-        location: formData.location,
-        bio: formData.bio,
-        contactInfo: formData.contactInfo,
-        playerProfile: {
-          age: formData.age ? parseInt(formData.age) : undefined,
-          gender: formData.gender,
+      if (user.role === 'player') {
+        payload = {
+          name: formData.name,
           sport: formData.sport,
-          position: formData.position,
-          bio: formData.bio,
           location: formData.location,
+          bio: formData.bio,
           contactInfo: formData.contactInfo,
-          verificationStatus: user.playerProfile?.verificationStatus || 'none'
-        }
-      };
-    } else if (user.role === 'coach') {
-      payload = {
-        name: formData.name,
-        sport: formData.sport,
-        location: formData.location,
-        bio: formData.bio,
-        experience: formData.experience,
-        contactInfo: formData.contactInfo,
-        coachProfile: {
+          playerProfile: {
+            age: formData.age ? parseInt(formData.age) : undefined,
+            gender: formData.gender,
+            sport: formData.sport,
+            position: formData.position,
+            bio: formData.bio,
+            location: formData.location,
+            contactInfo: formData.contactInfo,
+            verificationStatus: user.playerProfile?.verificationStatus || 'none'
+          }
+        };
+      } else if (user.role === 'coach') {
+        payload = {
+          name: formData.name,
+          sport: formData.sport,
+          location: formData.location,
+          bio: formData.bio,
           experience: formData.experience,
-          certifications: coachCertifications,
-          sportsCategory: formData.sport,
-          bio: formData.bio,
-          location: formData.location,
           contactInfo: formData.contactInfo,
-          rating: user.coachProfile?.rating || 5.0
-        }
-      };
-    } else if (user.role === 'organization') {
-      payload = {
-        name: formData.name,
-        location: formData.location,
-        bio: formData.bio,
-        contactInfo: {
-          phone: formData.contactInfo.phone,
-          website: formData.contactInfo.website
-        },
-        orgProfile: {
-          organizationName: formData.name,
-          address: formData.location,
-          description: formData.bio,
-          website: formData.contactInfo.website,
-          phone: formData.contactInfo.phone
-        }
-      };
-    }
+          coachProfile: {
+            experience: formData.experience,
+            certifications: coachCertifications,
+            sportsCategory: formData.sport,
+            bio: formData.bio,
+            location: formData.location,
+            contactInfo: formData.contactInfo,
+            rating: user.coachProfile?.rating || 5.0
+          }
+        };
+      } else if (user.role === 'organization') {
+        payload = {
+          name: formData.name,
+          location: formData.location,
+          bio: formData.bio,
+          contactInfo: {
+            phone: formData.contactInfo.phone,
+            website: formData.contactInfo.website
+          },
+          orgProfile: {
+            organizationName: formData.name,
+            address: formData.location,
+            description: formData.bio,
+            website: formData.contactInfo.website,
+            phone: formData.contactInfo.phone
+          }
+        };
+      }
 
-    updateUser(payload);
-    onClose();
+      await updateUser(payload);
+      toast.success('Profile updated!');
+      onClose();
+    } catch {
+      toast.error('Failed to save profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -343,7 +403,7 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, onClose }) => {
 
           {/* Contact Details */}
           <div>
-            <h3 className="text-md font-extrabold text-gray-800 dark:text-white mb-4 border-b pb-2 dark:border-gray-700">Contact & Social Links</h3>
+            <h3 className="text-md font-extrabold text-gray-800 dark:text-white mb-4 border-b pb-2 dark:border-gray-700">Contact &amp; Social Links</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Phone</label>
@@ -410,6 +470,23 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, onClose }) => {
                 </button>
               </div>
 
+              {/* Recently added achievements in this session */}
+              {achievements.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {achievements.map((a) => (
+                    <div key={a.id} className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-800">
+                      <div>
+                        <span className="font-bold text-sm text-gray-800 dark:text-white">{a.title}</span>
+                        <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-semibold capitalize">{a.type}</span>
+                      </div>
+                      <button type="button" onClick={() => handleDeleteAchievement(a.id)} className="text-red-400 hover:text-red-600">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {showAddAchievement && (
                 <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-4 border border-gray-150 dark:border-gray-700 space-y-4 mb-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -459,13 +536,51 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, onClose }) => {
                     />
                   </div>
 
+                  {/* Achievement Image */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Photo (optional)</label>
+                    <input
+                      ref={achievementImageRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAchievementImageSelect}
+                      className="hidden"
+                    />
+                    {achievementImagePreview ? (
+                      <div className="relative">
+                        <img src={achievementImagePreview} alt="Preview" className="w-full rounded-xl max-h-32 object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => { setAchievementImageFile(null); setAchievementImagePreview(null); }}
+                          className="absolute top-1 right-1 bg-black/60 text-white p-1 rounded-lg hover:bg-black/80"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => achievementImageRef.current?.click()}
+                        className="flex items-center gap-1.5 px-3 py-2 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-xl text-xs font-bold border border-dashed border-gray-300 dark:border-gray-600 w-full justify-center transition-all"
+                      >
+                        <Image className="w-4 h-4" />
+                        Add Photo
+                      </button>
+                    )}
+                  </div>
+
                   <div className="flex space-x-2">
                     <button
                       type="button"
                       onClick={handleAddAchievement}
-                      className="px-4 py-2 bg-green-500 text-white rounded-xl text-xs font-bold hover:bg-green-600 transition"
+                      disabled={savingAchievement}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-xl text-xs font-bold hover:bg-green-600 transition disabled:opacity-60"
                     >
-                      Save Achievement
+                      {savingAchievement ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>
+                      ) : (
+                        'Save Achievement'
+                      )}
                     </button>
                     <button
                       type="button"
@@ -490,10 +605,14 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, onClose }) => {
           </button>
           <button
             onClick={handleSave}
-            className="flex items-center px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-bold hover:opacity-90 shadow-md shadow-blue-500/10 text-sm"
+            disabled={saving}
+            className="flex items-center px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-bold hover:opacity-90 shadow-md shadow-blue-500/10 text-sm disabled:opacity-60"
           >
-            <Save className="w-4 h-4 mr-2" />
-            Save Changes
+            {saving ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+            ) : (
+              <><Save className="w-4 h-4 mr-2" /> Save Changes</>
+            )}
           </button>
         </div>
       </div>

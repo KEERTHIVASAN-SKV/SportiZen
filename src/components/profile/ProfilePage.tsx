@@ -1,16 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   Camera, Edit, MapPin, Trophy, Users, Star, Award, ShieldCheck,
   Phone, Globe, Link as LinkIcon, Calendar, ArrowLeft, UserPlus,
-  Loader2,
+  Loader2, UserCheck, UserMinus,
 } from 'lucide-react';
 import ProfileEditor from './ProfileEditor';
 import AchievementsSection from './AchievementsSection';
 import {
   profileService, achievementService, eventService,
-  connectionService, postService,
+  connectionService, postService, followService, storageService,
 } from '../../services/supabaseService';
 import { User, Event, Connection, Achievement, Post } from '../../types';
 import toast from 'react-hot-toast';
@@ -37,8 +37,17 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
   const [recentPosts, setRecentPosts] = useState<Post[]>([]);
   const [connection, setConnection] = useState<Connection | null>(null);
   const [connectionCount, setConnectionCount] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [followLoading, setFollowLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const loadProfileData = useCallback(async () => {
     if (!targetUserId) return;
@@ -61,7 +70,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
         setHostedEvents(events);
       }
 
-      // Connection status
+      // Connection status (coach↔player)
       if (currentUser && currentUser.id !== targetUserId) {
         const conn = await connectionService.getStatus(currentUser.id, targetUserId);
         setConnection(conn);
@@ -70,6 +79,20 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
       // Connection count
       const count = await connectionService.getCountForUser(targetUserId);
       setConnectionCount(count);
+
+      // Follow counts
+      const [fCount, fgCount] = await Promise.all([
+        followService.getFollowerCount(targetUserId),
+        followService.getFollowingCount(targetUserId),
+      ]);
+      setFollowerCount(fCount);
+      setFollowingCount(fgCount);
+
+      // Is current user following this profile?
+      if (currentUser && currentUser.id !== targetUserId) {
+        const following = await followService.isFollowing(currentUser.id, targetUserId);
+        setIsFollowing(following);
+      }
     } finally {
       setLoading(false);
     }
@@ -85,6 +108,72 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
       toast.success('Connection request sent!');
     } else {
       toast.error('Failed to send request.');
+    }
+  };
+
+  const handleFollowToggle = async () => {
+    if (!currentUser || !profileUser) return;
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        const ok = await followService.unfollow(currentUser.id, profileUser.id);
+        if (ok) {
+          setIsFollowing(false);
+          setFollowerCount(prev => Math.max(0, prev - 1));
+          toast.success(`Unfollowed ${profileUser.name}`);
+        }
+      } else {
+        const result = await followService.follow(currentUser.id, profileUser.id);
+        if (result) {
+          setIsFollowing(true);
+          setFollowerCount(prev => prev + 1);
+          toast.success(`Following ${profileUser.name}! 🎉`);
+        } else {
+          toast.error('Failed to follow. Please try again.');
+        }
+      }
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be less than 5MB'); return; }
+    setUploadingAvatar(true);
+    try {
+      const url = await storageService.uploadAvatar(currentUser.id, file);
+      if (url) {
+        await updateUser({ profilePicture: url });
+        toast.success('Profile picture updated!');
+        loadProfileData();
+      } else {
+        toast.error('Upload failed. Check your storage bucket settings.');
+      }
+    } finally {
+      setUploadingAvatar(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser) return;
+    if (file.size > 10 * 1024 * 1024) { toast.error('Image must be less than 10MB'); return; }
+    setUploadingCover(true);
+    try {
+      const url = await storageService.uploadCover(currentUser.id, file);
+      if (url) {
+        await updateUser({ coverPhoto: url });
+        toast.success('Cover photo updated!');
+        loadProfileData();
+      } else {
+        toast.error('Upload failed. Check your storage bucket settings.');
+      }
+    } finally {
+      setUploadingCover(false);
+      e.target.value = '';
     }
   };
 
@@ -118,6 +207,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
     organization: 'from-orange-500 via-amber-500 to-red-400',
   }[profileUser.role];
 
+  const canConnect = currentUser && !isOwnProfile &&
+    currentUser.role === 'player' && profileUser.role === 'coach';
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Back Button (for non-own profiles) */}
@@ -131,6 +223,22 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
         </button>
       )}
 
+      {/* Hidden file inputs */}
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleAvatarUpload}
+        className="hidden"
+      />
+      <input
+        ref={coverInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleCoverUpload}
+        className="hidden"
+      />
+
       {/* Cover Photo */}
       <div className="relative mb-8">
         <div className={`h-56 sm:h-64 bg-gradient-to-r ${roleGradient} rounded-2xl relative overflow-hidden shadow-xl`}>
@@ -139,8 +247,17 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
           )}
           <div className="absolute inset-0 bg-black/10 rounded-2xl" />
           {isOwnProfile && (
-            <button className="absolute top-4 right-4 bg-white/20 backdrop-blur-sm text-white p-2 rounded-xl hover:bg-white/30 transition-all">
-              <Camera className="w-5 h-5" />
+            <button
+              onClick={() => coverInputRef.current?.click()}
+              disabled={uploadingCover}
+              className="absolute top-4 right-4 bg-white/20 backdrop-blur-sm text-white p-2 rounded-xl hover:bg-white/30 transition-all flex items-center gap-1.5 text-xs font-bold"
+            >
+              {uploadingCover ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Camera className="w-4 h-4" />
+              )}
+              {uploadingCover ? 'Uploading...' : 'Change Cover'}
             </button>
           )}
         </div>
@@ -152,8 +269,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
               <Avatar src={profileUser.profilePicture} name={profileUser.name} size="xl" role={profileUser.role} className="w-full h-full" />
             </div>
             {isOwnProfile && (
-              <button className="absolute -bottom-1 -right-1 bg-blue-500 hover:bg-blue-600 text-white p-1.5 rounded-lg transition-all shadow-lg">
-                <Camera className="w-3.5 h-3.5" />
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploadingAvatar}
+                className="absolute -bottom-1 -right-1 bg-blue-500 hover:bg-blue-600 text-white p-1.5 rounded-lg transition-all shadow-lg"
+              >
+                {uploadingAvatar ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Camera className="w-3.5 h-3.5" />
+                )}
               </button>
             )}
           </div>
@@ -194,62 +319,78 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
                 <Edit className="w-4 h-4" />
                 Edit Profile
               </button>
-            ) : (
-              currentUser && profileUser.role === 'coach' && currentUser.role === 'player' && (
-                <>
-                  {!connection && (
-                    <button onClick={handleSendConnection} className="btn-primary flex items-center gap-2">
-                      <UserPlus className="w-4 h-4" />
-                      Connect
-                    </button>
+            ) : currentUser && (
+              <div className="flex gap-2 flex-wrap">
+                {/* Follow / Following button — visible for ALL roles */}
+                <button
+                  onClick={handleFollowToggle}
+                  disabled={followLoading}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all ${
+                    isFollowing
+                      ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 border border-gray-200 dark:border-gray-700'
+                      : 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/25 hover:opacity-90'
+                  }`}
+                >
+                  {followLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : isFollowing ? (
+                    <><UserCheck className="w-4 h-4" /> Following</>
+                  ) : (
+                    <><UserPlus className="w-4 h-4" /> Follow</>
                   )}
-                  {connection?.status === 'pending' && (
-                    <button disabled className="btn-ghost opacity-60">Request Sent</button>
-                  )}
-                  {connection?.status === 'accepted' && (
-                    <button disabled className="btn-ghost flex items-center gap-2 text-green-600 border-green-200 dark:border-green-800">
-                      <ShieldCheck className="w-4 h-4" />
-                      Connected
-                    </button>
-                  )}
-                </>
-              )
+                </button>
+
+                {/* Connect button for player→coach */}
+                {canConnect && (
+                  <>
+                    {!connection && (
+                      <button onClick={handleSendConnection} className="btn-primary flex items-center gap-2">
+                        <UserPlus className="w-4 h-4" />
+                        Connect
+                      </button>
+                    )}
+                    {connection?.status === 'pending' && (
+                      <button disabled className="btn-ghost opacity-60">Request Sent</button>
+                    )}
+                    {connection?.status === 'accepted' && (
+                      <button disabled className="btn-ghost flex items-center gap-2 text-green-600 border-green-200 dark:border-green-800">
+                        <ShieldCheck className="w-4 h-4" />
+                        Connected
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             )}
           </div>
         </div>
 
         {/* Stats Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 mb-8 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden divide-x divide-gray-100 dark:divide-gray-700">
+          {/* Followers / Following — always shown */}
+          <div className="text-center p-4">
+            <span className="text-xs text-gray-400 font-bold block mb-1">FOLLOWERS</span>
+            <span className="font-black text-gray-800 dark:text-white text-lg">{followerCount}</span>
+          </div>
+          <div className="text-center p-4">
+            <span className="text-xs text-gray-400 font-bold block mb-1">FOLLOWING</span>
+            <span className="font-black text-gray-800 dark:text-white text-lg">{followingCount}</span>
+          </div>
+
           {profileUser.role === 'player' && (
             <>
-              <div className="text-center p-4">
-                <span className="text-xs text-gray-400 font-bold block mb-1">SPORT</span>
-                <span className="font-black text-gray-800 dark:text-white text-sm">{profileUser.playerProfile?.sport || profileUser.sport}</span>
-              </div>
-              <div className="text-center p-4">
-                <span className="text-xs text-gray-400 font-bold block mb-1">POSITION</span>
-                <span className="font-black text-gray-800 dark:text-white text-sm">{profileUser.playerProfile?.position || '—'}</span>
-              </div>
               <div className="text-center p-4">
                 <span className="text-xs text-gray-400 font-bold block mb-1">ACHIEVEMENTS</span>
                 <span className="font-black text-gray-800 dark:text-white text-lg">{achievements.length}</span>
               </div>
               <div className="text-center p-4">
-                <span className="text-xs text-gray-400 font-bold block mb-1">CONNECTIONS</span>
-                <span className="font-black text-gray-800 dark:text-white text-lg">{connectionCount}</span>
+                <span className="text-xs text-gray-400 font-bold block mb-1">SPORT</span>
+                <span className="font-black text-gray-800 dark:text-white text-sm">{profileUser.playerProfile?.sport || profileUser.sport}</span>
               </div>
             </>
           )}
           {profileUser.role === 'coach' && (
             <>
-              <div className="text-center p-4">
-                <span className="text-xs text-gray-400 font-bold block mb-1">SPORT</span>
-                <span className="font-black text-gray-800 dark:text-white text-sm">{profileUser.coachProfile?.sportsCategory || '—'}</span>
-              </div>
-              <div className="text-center p-4">
-                <span className="text-xs text-gray-400 font-bold block mb-1">EXPERIENCE</span>
-                <span className="font-black text-gray-800 dark:text-white text-sm">{profileUser.coachProfile?.experience || '—'}</span>
-              </div>
               <div className="text-center p-4">
                 <span className="text-xs text-gray-400 font-bold block mb-1">RATING</span>
                 <span className="font-black text-yellow-500 flex items-center justify-center gap-1">
@@ -258,17 +399,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
                 </span>
               </div>
               <div className="text-center p-4">
-                <span className="text-xs text-gray-400 font-bold block mb-1">ATHLETES</span>
+                <span className="text-xs text-gray-400 font-bold block mb-1">CONNECTIONS</span>
                 <span className="font-black text-gray-800 dark:text-white text-lg">{connectionCount}</span>
               </div>
             </>
           )}
           {profileUser.role === 'organization' && (
             <>
-              <div className="text-center p-4 col-span-2">
-                <span className="text-xs text-gray-400 font-bold block mb-1">ORGANIZATION</span>
-                <span className="font-black text-gray-800 dark:text-white text-sm">{profileUser.orgProfile?.organizationName || profileUser.name}</span>
-              </div>
               <div className="text-center p-4">
                 <span className="text-xs text-gray-400 font-bold block mb-1">EVENTS</span>
                 <span className="font-black text-gray-800 dark:text-white text-lg">{hostedEvents.length}</span>
@@ -287,14 +424,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
         )}
 
         {/* Coach: Certifications */}
-        {profileUser.role === 'coach' && profileUser.coachProfile?.certifications?.length > 0 && (
+        {profileUser.role === 'coach' && (profileUser.coachProfile?.certifications?.length ?? 0) > 0 && (
           <div className="card-sports p-6 mb-6">
             <h3 className="section-header">
               <Award className="w-5 h-5 text-blue-500" />
               Professional Certifications
             </h3>
             <div className="flex flex-wrap gap-2">
-              {profileUser.coachProfile.certifications.map((cert, i) => (
+              {profileUser.coachProfile!.certifications.map((cert, i) => (
                 <span key={i} className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-xl border border-blue-100 dark:border-blue-800">
                   📜 {cert}
                 </span>
@@ -308,7 +445,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ viewedUserId: propUserId }) =
           <div className="card-sports p-6 mb-6">
             <h3 className="section-header">
               <Calendar className="w-5 h-5 text-orange-500" />
-              Hosted Events & Tournaments
+              Hosted Events &amp; Tournaments
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {hostedEvents.map((event) => (

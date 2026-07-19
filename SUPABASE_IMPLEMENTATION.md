@@ -25,6 +25,7 @@ create table public.profiles (
   location text,
   bio text,
   experience text,
+  contact_info jsonb,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -38,6 +39,7 @@ create table public.player_profiles (
   position text,
   bio text,
   location text,
+  contact_info jsonb,
   verification_status text default 'none' check (verification_status in ('pending', 'verified', 'rejected', 'none'))
 );
 
@@ -50,6 +52,7 @@ create table public.coach_profiles (
   sports_category text not null,
   bio text,
   location text,
+  contact_info jsonb,
   rating numeric(3,2) default 5.0 check (rating >= 0.0 and rating <= 5.0)
 );
 
@@ -77,6 +80,8 @@ create table public.events (
   registration_deadline date not null,
   description text not null,
   poster_url text,
+  max_participants integer,
+  registration_count integer default 0,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -158,9 +163,18 @@ create table public.notifications (
   user_id uuid references public.profiles(id) on delete cascade not null,
   title text not null,
   message text not null,
-  type text not null check (type in ('connection_request', 'connection_accepted', 'event_registration', 'verification_status', 'like', 'comment')),
+  type text not null check (type in ('connection_request', 'connection_accepted', 'event_registration', 'verification_status', 'like', 'comment', 'follow')),
   is_read boolean default false,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 13. FOLLOWS
+create table public.follows (
+  id uuid primary key default uuid_generate_v4(),
+  follower_id uuid references public.profiles(id) on delete cascade not null,
+  following_id uuid references public.profiles(id) on delete cascade not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique (follower_id, following_id)
 );
 ```
 
@@ -220,11 +234,13 @@ create trigger on_auth_user_created
 
 Configure the following **Public Storage Buckets** inside your Supabase dashboard:
 
-1.  `avatars/` - Athlete, coach and org profile avatar images.
-2.  `certificates/` - Sports and education certificates uploaded by players for verification review.
-3.  `achievements/` - Medals and trophies photos.
-4.  `event-posters/` - Tournament and match posters uploaded by organizations.
-5.  `videos/` - Training drills and match clip reels.
+1.  `avatars` - Athlete, coach and org profile avatar images.
+2.  `certificates` - Sports and education certificates uploaded by players for verification review.
+3.  `achievement-media` - Medals and trophies photos (used by storageService.uploadAchievementImage).
+4.  `event-posters` - Tournament and match posters uploaded by organizations.
+5.  `covers` - Cover photos for user profiles (used by storageService.uploadCover).
+6.  `post-media` - Images and videos attached to social posts (used by storageService.uploadPostMedia).
+7.  `videos` - Training drills and match clip reels.
 
 ---
 

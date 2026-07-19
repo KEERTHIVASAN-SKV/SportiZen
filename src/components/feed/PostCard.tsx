@@ -175,15 +175,23 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, style }) => {
         </p>
       </div>
 
-      {/* Image */}
+      {/* Media (Image or Video) */}
       {post.image && (
         <div className="mx-5 mb-4">
-          <img
-            src={post.image}
-            alt="Post"
-            className="w-full rounded-xl object-cover max-h-80"
-            loading="lazy"
-          />
+          {/\.(mp4|webm|ogg|mov)$/i.test(post.image) ? (
+            <video
+              src={post.image}
+              controls
+              className="w-full rounded-xl max-h-80 bg-black"
+            />
+          ) : (
+            <img
+              src={post.image}
+              alt="Post"
+              className="w-full rounded-xl object-cover max-h-80"
+              loading="lazy"
+            />
+          )}
         </div>
       )}
 
