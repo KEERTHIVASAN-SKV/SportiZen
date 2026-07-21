@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  Trophy, Calendar, Users, Sparkles, Send, Loader2, ArrowRight,
+  Trophy, Calendar, Users, Sparkles, ArrowRight, ShieldCheck, TrendingUp,
 } from 'lucide-react';
 import {
   registrationService, eventService, connectionService,
@@ -20,13 +20,6 @@ const PlayerDashboard: React.FC = () => {
   const [achievementsCount, setAchievementsCount] = useState(0);
   const [recommendedCoaches, setRecommendedCoaches] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // AI Chat
-  const [aiMessages, setAiMessages] = useState<{ sender: 'ai' | 'user'; text: string }[]>([
-    { sender: 'ai', text: `Hello ${user?.name}! I'm your AI Talent Advisor. Ask me about coaches, events, or your career path! 🏆` },
-  ]);
-  const [inputMessage, setInputMessage] = useState('');
-  const [isAiLoading, setIsAiLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -59,54 +52,9 @@ const PlayerDashboard: React.FC = () => {
     load();
   }, [user]);
 
-  const handleAiAction = (type: 'analyze' | 'coaches' | 'events' | 'custom', customText?: string) => {
-    setIsAiLoading(true);
-    const userText = customText ||
-      (type === 'analyze' ? 'Analyze my sports portfolio & career path' :
-       type === 'coaches' ? 'Recommend coaches matching my profile' :
-       'Recommend upcoming events');
-
-    setAiMessages((prev) => [...prev, { sender: 'user', text: userText }]);
-
-    setTimeout(() => {
-      let response = '';
-      if (type === 'analyze') {
-        response = `**PROFILE ANALYSIS — ${user?.name?.toUpperCase()}**\n\n` +
-          `• **Sport**: ${user?.sport} | **Status**: ${user?.playerProfile?.verificationStatus === 'verified' ? 'Verified ✅' : 'Unverified ⚠️'}\n` +
-          `• **Achievements**: ${achievementsCount} recorded\n` +
-          `• **Connections**: ${connectionsCount} active\n\n` +
-          `**Recommendations**:\n1. Upload verification docs for higher visibility\n2. Join ${user?.sport} tournaments to build your record\n3. Connect with coaches to accelerate your development`;
-      } else if (type === 'coaches') {
-        if (recommendedCoaches.length > 0) {
-          const list = recommendedCoaches.map((c) => `• **${c.name}** — ${c.coachProfile?.experience || 'Experienced'}`).join('\n');
-          response = `**COACHES FOR ${user?.sport?.toUpperCase()}**:\n\n${list}\n\n*Go to Coaches tab to connect!*`;
-        } else {
-          response = `No coaches found for **${user?.sport}** yet. More coaches are joining daily!`;
-        }
-      } else if (type === 'events') {
-        if (registeredEvents.length > 0) {
-          const list = registeredEvents.map((e) => `• **${e.eventName}** — ${e.date}`).join('\n');
-          response = `**YOUR REGISTERED EVENTS**:\n\n${list}\n\nKeep training hard! 💪`;
-        } else {
-          response = `You haven't registered for any events yet. Check the **Events** tab to find tournaments in ${user?.sport}!`;
-        }
-      } else {
-        response = `Great question! Based on your **${user?.sport}** profile, I recommend: 1) Connect with 2-3 coaches, 2) Register for upcoming tournaments, 3) Complete profile verification to boost visibility by 70%.`;
-      }
-      setAiMessages((prev) => [...prev, { sender: 'ai', text: response }]);
-      setIsAiLoading(false);
-    }, 1200);
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim()) return;
-    const msg = inputMessage;
-    setInputMessage('');
-    handleAiAction('custom', msg);
-  };
-
   if (!user) return null;
+
+  const verificationStatus = user.playerProfile?.verificationStatus || 'none';
 
   const stats = [
     {
@@ -123,11 +71,18 @@ const PlayerDashboard: React.FC = () => {
     },
     {
       label: 'Verification',
-      value: user.playerProfile?.verificationStatus?.toUpperCase() || 'NONE',
+      value: verificationStatus.toUpperCase(),
       icon: Sparkles,
-      gradient: user.playerProfile?.verificationStatus === 'verified' ? 'from-green-500 to-emerald-500' : 'from-orange-500 to-amber-500',
-      bg: user.playerProfile?.verificationStatus === 'verified' ? 'bg-green-50 dark:bg-green-950/20' : 'bg-orange-50 dark:bg-orange-950/20',
+      gradient: verificationStatus === 'verified' ? 'from-green-500 to-emerald-500' : 'from-orange-500 to-amber-500',
+      bg: verificationStatus === 'verified' ? 'bg-green-50 dark:bg-green-950/20' : 'bg-orange-50 dark:bg-orange-950/20',
     },
+  ];
+
+  const tips = [
+    { icon: ShieldCheck, color: 'text-green-500', text: 'Upload a certificate or college ID to get verified and boost scout visibility.' },
+    { icon: Calendar, color: 'text-blue-500', text: `Browse events in the Events tab to register for upcoming ${user.sport} tournaments.` },
+    { icon: Users, color: 'text-purple-500', text: 'Connect with coaches in your sport to get guidance and grow your network.' },
+    { icon: TrendingUp, color: 'text-amber-500', text: 'Add achievements to your profile to stand out to scouts and organizations.' },
   ];
 
   return (
@@ -243,78 +198,44 @@ const PlayerDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: AI Advisor */}
+        {/* Right: Profile Tips */}
         <div>
-          <div className="rounded-2xl overflow-hidden shadow-lg border border-blue-950/40 flex flex-col h-[500px]"
-            style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0c1a0f 100%)' }}>
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10">
-              <div className="p-2 bg-gradient-to-br from-blue-400 to-teal-400 rounded-xl">
-                <Sparkles className="w-4 h-4 text-white animate-spin" style={{ animationDuration: '4s' }} />
+          <div className="card-sports p-6 space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-teal-500 rounded-xl">
+                <TrendingUp className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="font-extrabold text-white text-xs tracking-wide">AI TALENT ADVISOR</p>
-                <span className="text-[10px] text-green-300 font-bold">● Online</span>
+                <p className="font-extrabold text-gray-800 dark:text-white text-sm">Profile Tips</p>
+                <p className="text-[10px] text-gray-400 font-semibold">Steps to boost your visibility</p>
               </div>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
-              {aiMessages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-xl p-3 leading-relaxed whitespace-pre-line ${
-                    msg.sender === 'user'
-                      ? 'bg-blue-600 text-white rounded-tr-none'
-                      : 'bg-white/10 text-gray-200 border border-white/5 rounded-tl-none'
-                  }`}>
-                    {msg.text}
-                  </div>
+            <div className="space-y-3">
+              {tips.map((tip, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700">
+                  <tip.icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${tip.color}`} />
+                  <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed font-medium">{tip.text}</p>
                 </div>
-              ))}
-              {isAiLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-white/10 rounded-xl p-3 border border-white/5 flex items-center gap-2">
-                    <Loader2 className="w-3.5 h-3.5 text-teal-400 animate-spin" />
-                    <span className="text-[10px] text-gray-400 font-bold">Thinking...</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Quick Actions */}
-            <div className="px-4 pb-2 grid grid-cols-1 gap-1.5 border-t border-white/10 pt-3">
-              {[
-                { label: 'Analyze my portfolio', type: 'analyze' as const },
-                { label: 'Find matching coaches', type: 'coaches' as const },
-                { label: 'My registered events', type: 'events' as const },
-              ].map((action) => (
-                <button
-                  key={action.type}
-                  onClick={() => handleAiAction(action.type)}
-                  disabled={isAiLoading}
-                  className="flex items-center justify-between px-3 py-2 bg-white/5 hover:bg-white/15 rounded-xl border border-white/5 text-[11px] text-blue-300 font-bold disabled:opacity-50 transition-all"
-                >
-                  {action.label}
-                  <ArrowRight className="w-3 h-3" />
-                </button>
               ))}
             </div>
 
-            {/* Chat Input */}
-            <div className="px-4 pb-4 pt-2">
-              <form onSubmit={handleSendMessage} className="relative">
-                <input
-                  type="text"
-                  placeholder="Ask me anything..."
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  disabled={isAiLoading}
-                  className="w-full pl-3 pr-10 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-                />
-                <button type="submit" disabled={isAiLoading || !inputMessage.trim()} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-blue-400 hover:text-white disabled:opacity-50">
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
-            </div>
+            {verificationStatus !== 'verified' && (
+              <button
+                onClick={() => navigate('/verification')}
+                className="w-full py-2.5 btn-primary text-xs flex items-center justify-center gap-2 mt-2"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Get Verified Now
+              </button>
+            )}
+
+            {verificationStatus === 'verified' && (
+              <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-xl">
+                <ShieldCheck className="w-4 h-4 text-green-500 flex-shrink-0" />
+                <p className="text-xs font-bold text-green-700 dark:text-green-400">Your profile is verified! ✅</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

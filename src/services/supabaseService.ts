@@ -1021,7 +1021,6 @@ export const verificationService = {
     playerName: string;
     documentType: 'college_id' | 'sports_certificate';
     fileUrl: string;
-    aiAnalysisResult?: string;
   }): Promise<VerificationDocument | null> {
     const { data, error } = await supabase
       .from('verification_documents')
@@ -1031,7 +1030,6 @@ export const verificationService = {
         document_type: params.documentType,
         file_url: params.fileUrl,
         status: 'pending',
-        ai_analysis_result: params.aiAnalysisResult,
       })
       .select()
       .single();

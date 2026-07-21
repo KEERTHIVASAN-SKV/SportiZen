@@ -3,8 +3,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { verificationService, storageService } from '../../services/supabaseService';
 import { VerificationDocument } from '../../types';
 import {
-  ShieldCheck, ShieldAlert, FileText, Upload, Sparkles, Loader2,
-  Check, X, Terminal, ArrowRight,
+  ShieldCheck, ShieldAlert, FileText, Upload, Loader2,
+  Check, X, ArrowRight, Info,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -17,8 +17,7 @@ const VerificationPage: React.FC = () => {
   const [docType, setDocType] = useState<'college_id' | 'sports_certificate'>('sports_certificate');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState('');
-  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
-  const [aiReport, setAiReport] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
 
   // Org
   const [pendingDocs, setPendingDocs] = useState<VerificationDocument[]>([]);
@@ -51,34 +50,13 @@ const VerificationPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error('File must be less than 5MB'); return; }
-
     setSelectedFile(file);
     setFileName(file.name);
-    setIsAiAnalyzing(true);
-    setAiReport('');
-
-    // Simulate AI OCR analysis
-    setTimeout(() => {
-      const report = `AI DOCUMENT VERIFICATION ANALYSIS REPORT (OCR v1.4):
---------------------------------------------------
-[DOCUMENT]: ${docType === 'college_id' ? 'COLLEGE STUDENT IDENTIFICATION CARD' : 'OFFICIAL SPORTS TOURNAMENT WINNER CERTIFICATE'}
-[EXTRACTED METADATA]:
-  • Full Name: ${user?.name}
-  • Confidence Level: 98.6% MATCH
-  • Verification Authority: Local Board / Institution
-  • Issue Date check: Valid (Date detected: 2025/2026)
-  • Tampering/Modification Analysis: CLEAN (No edits detected)
-  • Security Seal: DETECTED
---------------------------------------------------
-[RECOMMENDATION]: Automatic Verification Safe. Click Submit to send to Academy Panel.`;
-      setAiReport(report);
-      setIsAiAnalyzing(false);
-    }, 1500);
   };
 
   const handleSubmitDoc = async () => {
     if (!user || !selectedFile) return;
-    setIsAiAnalyzing(true);
+    setIsUploading(true);
 
     try {
       // Upload file to Supabase Storage
@@ -94,28 +72,24 @@ const VerificationPage: React.FC = () => {
         playerName: user.name,
         documentType: docType,
         fileUrl,
-        aiAnalysisResult: aiReport,
       });
 
       if (doc) {
         toast.success('Document uploaded & sent to Academy Panel!');
         setSelectedFile(null);
         setFileName('');
-        setAiReport('');
         loadData();
       } else {
         toast.error('Submission failed. Please try again.');
       }
     } finally {
-      setIsAiAnalyzing(false);
+      setIsUploading(false);
     }
   };
 
   const handleResetUpload = () => {
     setSelectedFile(null);
     setFileName('');
-    setAiReport('');
-    setIsAiAnalyzing(false);
   };
 
   // ─── Org Handlers ───
@@ -144,12 +118,12 @@ const VerificationPage: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-extrabold text-gray-800 dark:text-white tracking-tight">
-          AI Document Verification Center
+          Document Verification Center
         </h1>
         <p className="text-gray-500 dark:text-gray-400 mt-1">
           {user.role === 'player'
-            ? 'Verify your identity and sports achievements to unlock registrations and scout visibility.'
-            : 'Verify athlete registrations, scan uploaded document structures, and review AI confidence logs.'}
+            ? 'Upload your identity or sports achievement documents to get your profile verified by an Academy.'
+            : 'Review athlete verification requests and approve or decline uploaded documents.'}
         </p>
       </div>
 
@@ -203,6 +177,31 @@ const VerificationPage: React.FC = () => {
                 </p>
               </>
             )}
+
+            {/* Submission history */}
+            {playerDocs.length > 0 && (
+              <div className="mt-6 w-full border-t dark:border-gray-700 pt-4">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Past Submissions</p>
+                <div className="space-y-2">
+                  {playerDocs.map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between text-xs px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <span className="text-gray-600 dark:text-gray-300 font-semibold capitalize">
+                        {doc.documentType.replace('_', ' ')}
+                      </span>
+                      <span className={`font-black uppercase text-[10px] px-2 py-0.5 rounded-full ${
+                        doc.status === 'verified'
+                          ? 'bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400'
+                          : doc.status === 'pending'
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
+                          : 'bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400'
+                      }`}>
+                        {doc.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Upload Wizard */}
@@ -211,11 +210,19 @@ const VerificationPage: React.FC = () => {
               <div className="card-sports p-6 space-y-6">
                 <div>
                   <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-blue-500" />
+                    <Upload className="w-5 h-5 text-blue-500" />
                     Upload Athlete Documents
                   </h3>
                   <p className="text-xs text-gray-400 font-semibold mt-1">
-                    Select a document type and upload a clear scan. Our AI will parse it instantly.
+                    Select a document type and upload a clear scan or photo. An Academy will review it and verify your profile.
+                  </p>
+                </div>
+
+                {/* Info Notice */}
+                <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+                  <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-relaxed">
+                    Documents are reviewed manually by Academy organizations. Ensure your document is clear, unedited, and shows your full name and relevant details.
                   </p>
                 </div>
 
@@ -258,31 +265,22 @@ const VerificationPage: React.FC = () => {
                       <button onClick={handleResetUpload} className="text-xs text-red-500 hover:text-red-600 font-bold">Remove</button>
                     </div>
 
-                    {isAiAnalyzing && (
-                      <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-xl">
-                        <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                        <span className="text-xs text-blue-600 dark:text-blue-400 font-bold">AI OCR scanning document parameters...</span>
-                      </div>
-                    )}
-
-                    {aiReport && (
-                      <div className="bg-black text-green-400 p-4 rounded-xl font-mono text-[11px] leading-relaxed border border-gray-800">
-                        <div className="flex items-center gap-1.5 mb-2 border-b border-green-950 pb-1 text-green-500 text-xs font-black">
-                          <Terminal className="w-4 h-4" />
-                          <span>AI DOCUMENT SCANNER ENGINE</span>
-                        </div>
-                        <span className="whitespace-pre-line">{aiReport}</span>
-                      </div>
-                    )}
-
-                    {aiReport && !isAiAnalyzing && (
-                      <button
-                        onClick={handleSubmitDoc}
-                        className="w-full py-2.5 btn-primary flex items-center justify-center gap-2"
-                      >
-                        Submit to Academy Panel <ArrowRight className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button
+                      onClick={handleSubmitDoc}
+                      disabled={isUploading}
+                      className="w-full py-2.5 btn-primary flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          Submit to Academy Panel <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
                   </div>
                 )}
               </div>
@@ -293,13 +291,14 @@ const VerificationPage: React.FC = () => {
                   Document Under Review
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold mb-4">
-                  Document type: <strong>{latestDoc?.documentType?.replace('_', ' ')}</strong>
+                  Document type: <strong className="capitalize">{latestDoc?.documentType?.replace('_', ' ')}</strong>
                 </p>
-                {latestDoc?.aiAnalysisResult && (
-                  <div className="bg-black text-green-400 p-4 rounded-xl font-mono text-[11px] leading-relaxed border border-gray-800">
-                    <span className="whitespace-pre-line">{latestDoc.aiAnalysisResult}</span>
-                  </div>
-                )}
+                <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                  <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
+                    Your document is pending review by an Academy. You will receive a notification once the review is complete.
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -355,7 +354,7 @@ const VerificationPage: React.FC = () => {
               <div className="card-sports p-6 space-y-5">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="text-lg font-black text-gray-800 dark:text-white">Verify Athlete Account</h3>
+                    <h3 className="text-lg font-black text-gray-800 dark:text-white">Review Athlete Document</h3>
                     <p className="text-xs text-gray-400 font-bold mt-0.5">Applicant: {selectedDoc.playerName}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -384,41 +383,57 @@ const VerificationPage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Document Details */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Document Preview / Reference */}
+                  <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-100 dark:border-gray-700 space-y-3">
+                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Document Info</p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500 dark:text-gray-400 font-semibold">Player</span>
+                        <span className="text-gray-800 dark:text-white font-bold">{selectedDoc.playerName}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500 dark:text-gray-400 font-semibold">Type</span>
+                        <span className="text-gray-800 dark:text-white font-bold capitalize">{selectedDoc.documentType.replace('_', ' ')}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500 dark:text-gray-400 font-semibold">Submitted</span>
+                        <span className="text-gray-800 dark:text-white font-bold">{new Date(selectedDoc.uploadedAt).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Document Link / Preview */}
                   <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-center text-center py-8">
                     {selectedDoc.fileUrl.startsWith('http') ? (
-                      <a href={selectedDoc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs font-bold">
-                        📄 View Document
+                      <a href={selectedDoc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs font-bold flex items-center gap-2">
+                        <FileText className="w-5 h-5" />
+                        View Uploaded Document
                       </a>
                     ) : (
                       <>
-                        <FileText className="w-16 h-16 text-blue-500 mb-3 animate-pulse" />
-                        <p className="font-extrabold text-sm text-gray-800 dark:text-white">{selectedDoc.fileUrl}</p>
+                        <FileText className="w-12 h-12 text-blue-500 mb-2" />
+                        <p className="font-bold text-sm text-gray-500 dark:text-gray-400">File path stored</p>
                       </>
                     )}
                     <span className="text-[10px] text-gray-400 uppercase font-black tracking-widest mt-2 block">
                       {selectedDoc.documentType.replace('_', ' ')}
                     </span>
                   </div>
+                </div>
 
-                  {/* AI Report */}
-                  {selectedDoc.aiAnalysisResult && (
-                    <div className="bg-black text-green-400 p-4 rounded-xl font-mono text-[10px] leading-relaxed border border-gray-900">
-                      <div className="flex items-center gap-1.5 mb-2 border-b border-green-950 pb-1 text-green-500 font-bold">
-                        <Terminal className="w-3.5 h-3.5" />
-                        <span>AI OCR REPORT</span>
-                      </div>
-                      <span className="whitespace-pre-line">{selectedDoc.aiAnalysisResult}</span>
-                    </div>
-                  )}
+                <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                  <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
+                    Carefully review the uploaded document before approving. Once approved, the athlete's profile will be marked as <strong>Verified</strong> and they will be notified.
+                  </p>
                 </div>
               </div>
             ) : (
               <div className="card-sports p-10 text-center">
                 <ShieldCheck className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
                 <h3 className="text-lg font-bold text-gray-400">Select an applicant to review.</h3>
-                <p className="text-gray-400 text-sm mt-1">Review applicant details and AI OCR analysis reports.</p>
+                <p className="text-gray-400 text-sm mt-1">Review applicant details and approve or decline their verification document.</p>
               </div>
             )}
           </div>
